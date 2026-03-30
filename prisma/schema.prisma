@@ -1,0 +1,94 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String         @id @default(uuid())
+  phoneNumber   String         @unique
+  email         String?        @unique
+  passwordHash  String?
+  schedules     Schedule[]
+  preferences   Preference?
+  conversations Conversation[]
+}
+
+model Schedule {
+  id                 String   @id @default(uuid())
+  userId             String
+  user               User     @relation(fields: [userId], references: [id])
+  originAirport      String
+  destinationAirport String
+  targetDates        String   // specific dates "2024-04-23" or logic "FRIDAYS"
+  notificationDay    String   // Day of week to send SMS, e.g., "THURSDAY"
+  notificationTime   String   // Local time to send SMS, e.g., "18:00"
+  directionLabel     String   // e.g., "NYC→SFO Friday"
+  active             Boolean  @default(true)
+}
+
+model Preference {
+  id                  String  @id @default(uuid())
+  userId              String  @unique
+  user                User    @relation(fields: [userId], references: [id])
+  preferredAirlines   String  // Comma-separated or JSON
+  maxPrice            Float?
+  nonstopOnly         Boolean @default(false)
+  earliestDepTime     String? // e.g. "06:00"
+  latestDepTime       String? // e.g. "20:00"
+  otherConfig         String? // JSON blob for extension
+}
+
+enum ConversationState {
+  IDLE
+  ASK_TRIP_DATE
+  SHOW_OPTIONS
+  CONFIRM_OPTION
+  DONE
+  ERROR
+}
+
+model Conversation {
+  id             String                @id @default(uuid())
+  userId         String
+  user           User                  @relation(fields: [userId], references: [id])
+  phoneNumber    String
+  state          ConversationState     @default(IDLE)
+  context        String?               // JSON blob of pending trip requirements
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  messages       ConversationMessage[]
+  pendingOffers  PendingOffer[]
+}
+
+model ConversationMessage {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  direction      String       // INBOUND or OUTBOUND
+  body           String
+  rawPayload     String?      // JSON dump of Twilio payload
+  createdAt      DateTime     @default(now())
+}
+
+model PendingOffer {
+  id                  String       @id @default(uuid())
+  conversationId      String
+  conversation        Conversation @relation(fields: [conversationId], references: [id])
+  offerIndex          Int          // 1, 2, 3 as shown to user
+  originAirport       String
+  destinationAirport  String
+  departureDate       String
+  airline             String
+  flightNumber        String
+  departureTimeLocal  String
+  arrivalTimeLocal    String
+  priceCurrency       String
+  priceAmount         Float
+  cabin               String
+  rawOffer            String       // JSON blob from Flight API
+  bookingLink         String?      // Direct link to book
+}
