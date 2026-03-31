@@ -19,7 +19,7 @@ Open **http://localhost:3020** (port is fixed in `package.json` and `APP_DEV_POR
 | Integration | Cost | What you do |
 |-------------|------|-------------|
 | **Supabase** | Free Postgres tier | Create project → copy `DATABASE_URL` → `npm run db:push` |
-| **Kiwi Tequila** | Free API key | [tequila.kiwi.com/portal](https://tequila.kiwi.com/portal/) → `TEQUILA_API_KEY` |
+| **Ignav** | Free 1000 requests | [ignav.com/signup](https://ignav.com/signup) → `IGNAV_API_KEY` |
 | **Twilio** | Trial credit, then ~$0.0079/SMS | Buy SMS-capable number → Messaging webhook `POST` → your `/api/sms` URL |
 | **Vercel** | Free hobby | Connect repo → env vars → deploy; cron in `vercel.json` hits `/api/cron/hourly-check` |
 | **ngrok** (local SMS) | Free tier | `ngrok http 3020` → set `TWILIO_WEBHOOK_URL` to `https://….ngrok-free.app/api/sms` |

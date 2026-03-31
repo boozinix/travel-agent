@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db'
+import Link from 'next/link'
 import {
   createSchedule,
   deleteSchedule,
@@ -12,9 +13,8 @@ import styles from './page.module.css'
 
 export const dynamic = 'force-dynamic'
 
-export default async function Dashboard() {
-  const integration = getIntegrationStatus()
-  const users = await prisma.user.findMany({
+async function loadDashboardUsers() {
+  return prisma.user.findMany({
     include: {
       schedules: { orderBy: { directionLabel: 'asc' } },
       preferences: true,
@@ -26,6 +26,22 @@ export default async function Dashboard() {
     },
     orderBy: { phoneNumber: 'asc' },
   })
+}
+
+export default async function Dashboard() {
+  const integration = getIntegrationStatus()
+
+  let users: Awaited<ReturnType<typeof loadDashboardUsers>> = []
+  let dbError: string | null = null
+  try {
+    users = await loadDashboardUsers()
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Database connection failed'
+    dbError = msg
+    console.error('[dashboard] database unavailable:', err)
+  }
+
+  const dbOk = dbError === null
 
   return (
     <div className={styles.page}>
@@ -35,7 +51,35 @@ export default async function Dashboard() {
           Local app runs on port {APP_DEV_PORT}. Configure routes, alert times, and SMS. Hourly cron on
           Vercel; schedules use the server&apos;s local day and hour unless you set TZ.
         </p>
+        <nav className={styles.nav}>
+          <Link href="/simulate">SMS Simulator</Link>
+          <Link href="/conversations">Conversations</Link>
+          <Link href="/api/test-search?from=NYC&to=SFO&date=2026-05-01">Test Flight Search</Link>
+          <Link href="/api/health">Health</Link>
+        </nav>
       </header>
+
+      {dbError ? (
+        <div className={styles.dbErrorBanner}>
+          <strong>Database not reachable</strong>
+          Prisma tried to use <code>DATABASE_URL</code> from your <code>.env</code> and could not connect.
+          <br />
+          <br />
+          If the error mentions <code>:6543</code> on <code>db.*</code>, your network is blocking the
+          transaction pooler port. Switch both <code>DATABASE_URL</code> and{' '}
+          <code>DIRECT_URL</code> to the <strong>Session pooler</strong> URI from Supabase → Connect
+          (host like <code>aws-0-…pooler.supabase.com:5432</code>, user{' '}
+          <code>postgres.your-project-ref</code>). Paste the same line twice. Wrong region in the
+          hostname causes <strong>Tenant or user not found</strong>. Or use a phone hotspot and the
+          transaction pooler URLs. Restart <code>npm run dev</code> after saving <code>.env</code>.
+          <br />
+          <br />
+          <span style={{ opacity: 0.85 }}>Technical detail: {dbError}</span>
+          <br />
+          <br />
+          Until this is fixed, Save buttons below will fail because they also need Postgres.
+        </div>
+      ) : null}
 
       <div className={styles.grid}>
         <section className={`${styles.card} ${styles.gridFull}`}>
@@ -48,16 +92,22 @@ export default async function Dashboard() {
               Database (Supabase Postgres)
             </li>
             <li className={styles.statusRow}>
-              <span className={integration.tequila ? styles.statusOk : styles.statusBad}>
-                {integration.tequila ? '●' : '○'}
+              <span className={integration.ignav ? styles.statusOk : styles.statusBad}>
+                {integration.ignav ? '●' : '○'}
               </span>
-              Kiwi Tequila API key
+              Ignav flight API key
+            </li>
+            <li className={styles.statusRow}>
+              <span className={integration.whatsapp ? styles.statusOk : styles.statusBad}>
+                {integration.whatsapp ? '●' : '○'}
+              </span>
+              WhatsApp Cloud API (free, recommended)
             </li>
             <li className={styles.statusRow}>
               <span className={integration.twilio ? styles.statusOk : styles.statusBad}>
                 {integration.twilio ? '●' : '○'}
               </span>
-              Twilio (SID + token + from number)
+              Twilio SMS (optional alternative)
             </li>
             <li className={styles.statusRow}>
               <span className={integration.cronSecret ? styles.statusOk : styles.statusBad}>
@@ -67,13 +117,16 @@ export default async function Dashboard() {
             </li>
           </ul>
           <p className={styles.hint}>
-            Twilio Messaging webhook (POST): paste this URL in Twilio Console. For local testing use
-            ngrok and set <code>TWILIO_WEBHOOK_URL</code> to the public <code>/api/sms</code> URL.
+            <strong>WhatsApp webhook</strong> (POST): paste in Meta App Dashboard → WhatsApp →
+            Configuration → Callback URL. Set <code>WHATSAPP_VERIFY_TOKEN</code> to match.
+          </p>
+          <pre className={styles.codeBlock}>{integration.whatsappWebhookUrl}</pre>
+          <p className={styles.hint}>
+            <strong>Twilio SMS webhook</strong> (POST, optional): paste in Twilio Console if using SMS.
           </p>
           <pre className={styles.codeBlock}>{integration.smsWebhookUrl}</pre>
           <p className={styles.hint}>
-            Health JSON: <code>/api/health</code> · Set <code>TWILIO_VALIDATE_SIGNATURE=false</code> for
-            local dev if signature check fails; production should validate.
+            Health JSON: <code>/api/health</code>
           </p>
         </section>
 

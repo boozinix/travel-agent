@@ -1,14 +1,30 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { notificationMatchesHour, normalizeDateForTequila } from '@/lib/dates'
+import { notificationMatchesHour } from '@/lib/dates'
 import { formatFlightLine, preferenceFromPrisma, searchFlights } from '@/lib/flightSearch'
+import { isWhatsAppConfigured, sendWhatsAppMessage } from '@/lib/whatsapp'
 import twilio from 'twilio'
 
 const accountSid = process.env.TWILIO_ACCOUNT_SID
 const authToken = process.env.TWILIO_AUTH_TOKEN
 const fromPhoneNumber = process.env.TWILIO_PHONE_NUMBER
 
-const client = accountSid && authToken ? twilio(accountSid, authToken) : null
+const twilioClient = accountSid && authToken ? twilio(accountSid, authToken) : null
+
+async function sendMessage(to: string, body: string): Promise<boolean> {
+  if (isWhatsAppConfigured()) {
+    const phone = to.replace(/^\+/, '')
+    return sendWhatsAppMessage(phone, body)
+  }
+
+  if (twilioClient && fromPhoneNumber) {
+    await twilioClient.messages.create({ body, from: fromPhoneNumber, to })
+    return true
+  }
+
+  console.warn('No messaging provider configured — would send to', to, ':', body)
+  return false
+}
 
 export async function GET(req: Request) {
   try {
@@ -45,13 +61,12 @@ export async function GET(req: Request) {
       let messageBody = `Travel alert: ${schedule.directionLabel}\n${schedule.originAirport} → ${schedule.destinationAirport}\n\n`
 
       for (const date of targetDates) {
-        const tequilaDate = normalizeDateForTequila(date)
         try {
           const flights = await searchFlights({
             origin: schedule.originAirport,
             destination: schedule.destinationAirport,
-            dateFrom: tequilaDate,
-            dateTo: tequilaDate,
+            dateFrom: date,
+            dateTo: date,
             preferences: preferenceFromPrisma(schedule.user.preferences),
           })
 
@@ -63,20 +78,12 @@ export async function GET(req: Request) {
           }
         } catch (e) {
           console.error('Cron flight search error:', e)
-          messageBody += `${date}: Search failed (check TEQUILA_API_KEY).\n\n`
+          messageBody += `${date}: Search failed (check IGNAV_API_KEY).\n\n`
         }
       }
 
-      if (client && fromPhoneNumber) {
-        await client.messages.create({
-          body: messageBody,
-          from: fromPhoneNumber,
-          to: schedule.user.phoneNumber,
-        })
-        sentCount++
-      } else {
-        console.warn('Twilio not configured — would send:', messageBody)
-      }
+      const sent = await sendMessage(schedule.user.phoneNumber, messageBody)
+      if (sent) sentCount++
     }
 
     return NextResponse.json({

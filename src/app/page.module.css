@@ -29,6 +29,27 @@
   line-height: 1.5;
 }
 
+.nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin-top: 1rem;
+}
+
+.nav a {
+  color: var(--accent);
+  font-size: 0.85rem;
+  text-decoration: none;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  transition: background 0.15s ease;
+}
+
+.nav a:hover {
+  background: rgba(126, 224, 194, 0.1);
+}
+
 .grid {
   display: grid;
   gap: 1.5rem;
@@ -309,4 +330,26 @@
   font-size: 0.82rem;
   color: var(--muted);
   line-height: 1.45;
+}
+
+.dbErrorBanner {
+  grid-column: 1 / -1;
+  background: rgba(248, 113, 113, 0.12);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.dbErrorBanner strong {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: #f87171;
+}
+
+.dbErrorBanner code {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.8rem;
 }

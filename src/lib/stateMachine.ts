@@ -1,7 +1,6 @@
 import { ConversationState } from '@prisma/client'
 import { prisma } from './db'
 import { formatFlightLine, preferenceFromPrisma, searchFlights } from './flightSearch'
-import { normalizeDateForTequila } from './dates'
 
 function parseRoute(messageBody: string): { origin: string; destination: string } | null {
   const lower = messageBody.toLowerCase()
@@ -107,7 +106,6 @@ export async function processIncomingMessage(phoneNumber: string, messageBody: s
         }
 
         const dateRaw = messageBody.trim()
-        const tequilaDate = normalizeDateForTequila(dateRaw)
 
         replyText = 'Searching for flights… one moment.'
 
@@ -116,8 +114,8 @@ export async function processIncomingMessage(phoneNumber: string, messageBody: s
         const flights = await searchFlights({
           origin: context.origin,
           destination: context.destination,
-          dateFrom: tequilaDate,
-          dateTo: tequilaDate,
+          dateFrom: dateRaw,
+          dateTo: dateRaw,
           preferences: preferenceFromPrisma(user.preferences),
         })
 

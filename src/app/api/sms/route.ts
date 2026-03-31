@@ -26,14 +26,17 @@ export async function POST(req: Request) {
     }
 
     const body = params.get('Body')
-    const from = params.get('From')
+    const rawFrom = params.get('From')
 
-    if (!body || !from) {
+    if (!body || !rawFrom) {
       return NextResponse.json(
         { error: 'Missing Body or From (Twilio webhook)' },
         { status: 400 }
       )
     }
+
+    // WhatsApp sends "whatsapp:+15551234567"; normalize to just the phone number
+    const from = rawFrom.replace(/^whatsapp:/, '')
 
     const replyMessage = await processIncomingMessage(from, body)
     const safe = escapeTwiMLMessage(replyMessage)

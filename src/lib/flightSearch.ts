@@ -1,5 +1,4 @@
 import type { Preference } from '@prisma/client'
-import { normalizeDateForTequila } from './dates'
 
 export type FlightSearchResult = {
   id: string
@@ -10,7 +9,6 @@ export type FlightSearchResult = {
   departureTime: string
   arrivalTime: string
   bookingLink: string
-  /** 1 = nonstop */
   segmentCount: number
 }
 
@@ -89,6 +87,54 @@ function applyPreferenceFilters(
   return out.slice(0, take)
 }
 
+/**
+ * Normalize user-typed dates to YYYY-MM-DD (what Ignav expects).
+ * Accepts: "23/04/2026", "2026-04-23", "04-23-2026", or already YYYY-MM-DD.
+ */
+function normalizeDate(input: string): string {
+  const s = input.trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)) {
+    const [d, m, y] = s.split('/')
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
+  }
+  return s
+}
+
+type IgnavSegment = {
+  marketing_carrier_code?: string
+  flight_number?: string
+  operating_carrier_name?: string
+  departure_airport?: string
+  departure_time_local?: string
+  arrival_airport?: string
+  arrival_time_local?: string
+  duration_minutes?: number
+}
+
+type IgnavItinerary = {
+  ignav_id?: string
+  price?: { amount?: number; currency?: string }
+  outbound?: { carrier?: string; segments?: IgnavSegment[]; duration_minutes?: number }
+  cabin_class?: string
+}
+
+async function fetchBookingLink(apiKey: string, ignavId: string): Promise<string> {
+  try {
+    const res = await fetch('https://ignav.com/api/fares/booking-links', {
+      method: 'POST',
+      headers: { 'X-Api-Key': apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ignav_id: ignavId }),
+    })
+    if (!res.ok) return ''
+    const data = await res.json()
+    const links = data?.booking_links as { url?: string }[] | undefined
+    return links?.[0]?.url ?? ''
+  } catch {
+    return ''
+  }
+}
+
 export async function searchFlights(params: {
   origin: string
   destination: string
@@ -96,13 +142,12 @@ export async function searchFlights(params: {
   dateTo: string
   preferences?: FlightPreferenceInput | null
 }): Promise<FlightSearchResult[]> {
-  const apiKey = process.env.TEQUILA_API_KEY
-  const dateFrom = normalizeDateForTequila(params.dateFrom)
-  const dateTo = normalizeDateForTequila(params.dateTo)
+  const apiKey = process.env.IGNAV_API_KEY
+  const date = normalizeDate(params.dateFrom)
   const prefs = params.preferences
 
   if (!apiKey) {
-    console.warn('TEQUILA_API_KEY not set. Returning mock data.')
+    console.warn('IGNAV_API_KEY not set. Returning mock data.')
     const mock: FlightSearchResult[] = [
       {
         id: 'mock-1',
@@ -110,9 +155,9 @@ export async function searchFlights(params: {
         flightNumber: 'MK123',
         price: 199.99,
         currency: 'USD',
-        departureTime: '2024-05-01T08:00:00',
-        arrivalTime: '2024-05-01T11:00:00',
-        bookingLink: 'https://www.kiwi.com',
+        departureTime: '2026-05-01T08:00:00',
+        arrivalTime: '2026-05-01T11:00:00',
+        bookingLink: 'https://www.google.com/travel/flights',
         segmentCount: 1,
       },
       {
@@ -121,43 +166,32 @@ export async function searchFlights(params: {
         flightNumber: 'BS456',
         price: 249.5,
         currency: 'USD',
-        departureTime: '2024-05-01T14:30:00',
-        arrivalTime: '2024-05-01T17:45:00',
-        bookingLink: 'https://www.kiwi.com',
+        departureTime: '2026-05-01T14:30:00',
+        arrivalTime: '2026-05-01T17:45:00',
+        bookingLink: 'https://www.google.com/travel/flights',
         segmentCount: 1,
       },
     ]
     return applyPreferenceFilters(mock, prefs, 5)
   }
 
-  const url = new URL('https://api.tequila.kiwi.com/v2/search')
-  url.searchParams.set('fly_from', params.origin.trim().toUpperCase())
-  url.searchParams.set('fly_to', params.destination.trim().toUpperCase())
-  url.searchParams.set('date_from', dateFrom)
-  url.searchParams.set('date_to', dateTo)
-  url.searchParams.set('curr', 'USD')
-  url.searchParams.set('limit', '15')
+  const body: Record<string, string | number | boolean> = {
+    origin: params.origin.trim().toUpperCase(),
+    destination: params.destination.trim().toUpperCase(),
+    departure_date: date,
+  }
 
   if (prefs?.nonstopOnly) {
-    url.searchParams.set('max_stopovers', '0')
+    body.stops = 0
   }
 
-  const airlines = prefs?.preferredAirlines?.trim()
-  if (airlines && airlines.toLowerCase() !== 'any') {
-    const codes = airlines
-      .split(',')
-      .map((s) => s.trim().toUpperCase())
-      .filter((c) => c.length <= 3 && c.length > 0)
-    if (codes.length > 0) {
-      url.searchParams.set('select_airlines', codes.join(','))
-    }
-  }
-
-  const res = await fetch(url.toString(), {
+  const res = await fetch('https://ignav.com/api/fares/one-way', {
+    method: 'POST',
     headers: {
-      apikey: apiKey,
-      accept: 'application/json',
+      'X-Api-Key': apiKey,
+      'Content-Type': 'application/json',
     },
+    body: JSON.stringify(body),
   })
 
   if (!res.ok) {
@@ -166,30 +200,41 @@ export async function searchFlights(params: {
   }
 
   const data = await res.json()
-  if (!data.data?.length) return []
+  const itineraries = (data?.itineraries ?? []) as IgnavItinerary[]
+  if (itineraries.length === 0) return []
 
-  const mapped: FlightSearchResult[] = data.data.map((flight: Record<string, unknown>) => {
-    const segments = flight.route as Record<string, unknown>[] | undefined
-    const first = segments?.[0]
-    const airlinesList = flight.airlines as string[] | undefined
+  const mapped: FlightSearchResult[] = itineraries.map((it) => {
+    const segs = it.outbound?.segments ?? []
+    const first = segs[0]
     return {
-      id: String(flight.id ?? ''),
-      airline: airlinesList?.[0] ?? 'Unknown',
-      flightNumber:
-        first && typeof first.flight_no !== 'undefined'
-          ? String(first.flight_no)
-          : '—',
-      price: Number(flight.price),
-      currency: 'USD',
-      departureTime: String(flight.local_departure ?? ''),
-      arrivalTime: String(flight.local_arrival ?? ''),
-      bookingLink: String(flight.deep_link ?? 'https://www.kiwi.com'),
-      segmentCount: segments?.length ?? 1,
+      id: it.ignav_id ?? '',
+      airline: it.outbound?.carrier ?? first?.operating_carrier_name ?? 'Unknown',
+      flightNumber: first
+        ? `${first.marketing_carrier_code ?? ''}${first.flight_number ?? ''}`
+        : '—',
+      price: it.price?.amount ?? 0,
+      currency: it.price?.currency ?? 'USD',
+      departureTime: first?.departure_time_local ?? '',
+      arrivalTime: segs.length > 0 ? (segs[segs.length - 1].arrival_time_local ?? '') : '',
+      bookingLink: '',
+      segmentCount: segs.length || 1,
     }
   })
 
   const sorted = [...mapped].sort((a, b) => a.price - b.price)
-  return applyPreferenceFilters(sorted, prefs, 5)
+  const filtered = applyPreferenceFilters(sorted, prefs, 5)
+
+  const withLinks = await Promise.all(
+    filtered.map(async (f) => {
+      if (f.id) {
+        const link = await fetchBookingLink(apiKey, f.id)
+        if (link) return { ...f, bookingLink: link }
+      }
+      return { ...f, bookingLink: `https://www.google.com/travel/flights?q=${params.origin}+to+${params.destination}+${date}` }
+    })
+  )
+
+  return withLinks
 }
 
 function formatClockFromIsoLike(s: string): string {
