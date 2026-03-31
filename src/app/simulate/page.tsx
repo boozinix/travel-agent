@@ -58,9 +58,13 @@ export default function SimulatePage() {
 
       <div className={styles.chat}>
         {messages.length === 0 && (
-          <p className={styles.empty}>
-            Send a message to start. Try &quot;NYC to SFO&quot; then a date like &quot;2026-05-01&quot;.
-          </p>
+          <div className={styles.empty}>
+            <p>Send <strong>A</strong> for NYC→SFO (Fridays) or <strong>B</strong> for SFO→NYC (Sundays).</p>
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', marginTop: '0.75rem' }}>
+              <button className={styles.sendBtn} onClick={() => { setInput('A'); }}>Route A (NYC→SFO)</button>
+              <button className={styles.sendBtn} onClick={() => { setInput('B'); }}>Route B (SFO→NYC)</button>
+            </div>
+          </div>
         )}
         {messages.map((m, i) => (
           <div key={i} className={m.role === 'user' ? styles.userBubble : styles.botBubble}>

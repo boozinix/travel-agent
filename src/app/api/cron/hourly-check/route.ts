@@ -1,28 +1,24 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { notificationMatchesHour } from '@/lib/dates'
-import { formatFlightLine, preferenceFromPrisma, searchFlights } from '@/lib/flightSearch'
+import { MVP_ROUTES, getNextDates, formatDateLabel, toISODate } from '@/lib/routes'
+import { searchMVPRoute, formatMVPFlightLine } from '@/lib/mvpSearch'
 import { isWhatsAppConfigured, sendWhatsAppMessage } from '@/lib/whatsapp'
 import twilio from 'twilio'
 
 const accountSid = process.env.TWILIO_ACCOUNT_SID
 const authToken = process.env.TWILIO_AUTH_TOKEN
 const fromPhoneNumber = process.env.TWILIO_PHONE_NUMBER
-
 const twilioClient = accountSid && authToken ? twilio(accountSid, authToken) : null
 
 async function sendMessage(to: string, body: string): Promise<boolean> {
   if (isWhatsAppConfigured()) {
-    const phone = to.replace(/^\+/, '')
-    return sendWhatsAppMessage(phone, body)
+    return sendWhatsAppMessage(to.replace(/^\+/, ''), body)
   }
-
   if (twilioClient && fromPhoneNumber) {
     await twilioClient.messages.create({ body, from: fromPhoneNumber, to })
     return true
   }
-
-  console.warn('No messaging provider configured — would send to', to, ':', body)
+  console.warn('No messaging provider — would send to', to, ':', body)
   return false
 }
 
@@ -38,59 +34,49 @@ export async function GET(req: Request) {
     const currentDay = days[now.getDay()]
     const currentHour = now.getHours()
 
-    const activeSchedules = await prisma.schedule.findMany({
-      where: {
-        active: true,
-        notificationDay: currentDay,
-      },
-      include: { user: { include: { preferences: true } } },
-    })
-
-    const due = activeSchedules.filter((s) => notificationMatchesHour(s.notificationTime, currentHour))
-
+    const users = await prisma.user.findMany()
     let sentCount = 0
 
-    for (const schedule of due) {
-      if (!schedule.user?.phoneNumber) continue
+    for (const route of MVP_ROUTES) {
+      const triggerDay = route.id === 'A' ? 'THURSDAY' : 'THURSDAY'
+      const triggerHour = 18
 
-      const targetDates = schedule.targetDates
-        .split(',')
-        .map((d: string) => d.trim())
-        .filter(Boolean)
+      if (currentDay !== triggerDay || currentHour !== triggerHour) continue
 
-      let messageBody = `Travel alert: ${schedule.directionLabel}\n${schedule.originAirport} → ${schedule.destinationAirport}\n\n`
+      const dates = getNextDates(route.dayOfWeek, 3)
 
-      for (const date of targetDates) {
-        try {
-          const flights = await searchFlights({
-            origin: schedule.originAirport,
-            destination: schedule.destinationAirport,
-            dateFrom: date,
-            dateTo: date,
-            preferences: preferenceFromPrisma(schedule.user.preferences),
-          })
+      for (const user of users) {
+        if (!user.phoneNumber) continue
 
-          if (flights.length > 0) {
-            const best = flights[0]
-            messageBody += `${date}: ${formatFlightLine(best)}\n${best.bookingLink}\n\n`
-          } else {
-            messageBody += `${date}: No flights found.\n\n`
+        let body = `${route.label} options:\n\n`
+
+        for (const date of dates) {
+          const iso = toISODate(date)
+          const label = formatDateLabel(date)
+          try {
+            const flights = await searchMVPRoute(route, iso)
+            if (flights.length > 0) {
+              const best = flights[0]
+              body += `${label}: ${formatMVPFlightLine(best)}\n`
+            } else {
+              body += `${label}: No nonstop flights found\n`
+            }
+          } catch {
+            body += `${label}: Search error\n`
           }
-        } catch (e) {
-          console.error('Cron flight search error:', e)
-          messageBody += `${date}: Search failed (check IGNAV_API_KEY).\n\n`
         }
-      }
 
-      const sent = await sendMessage(schedule.user.phoneNumber, messageBody)
-      if (sent) sentCount++
+        body += '\nReply A or B to browse interactively.'
+
+        const sent = await sendMessage(user.phoneNumber, body)
+        if (sent) sentCount++
+      }
     }
 
     return NextResponse.json({
       success: true,
       currentDay,
       currentHour,
-      matchedSchedules: due.length,
       sentMessages: sentCount,
     })
   } catch (err: unknown) {
