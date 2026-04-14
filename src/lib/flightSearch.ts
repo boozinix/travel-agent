@@ -46,31 +46,43 @@ function clockToMinutes(clock: string): number | null {
   return parseInt(m[1], 10) * 60 + parseInt(m[2], 10)
 }
 
+/** Map airline name → IATA code for Kayak filtering */
+const AIRLINE_IATA: Record<string, string> = {
+  delta: 'DL', united: 'UA', american: 'AA', alaska: 'AS',
+  jetblue: 'B6', southwest: 'WN', spirit: 'NK', frontier: 'F9',
+  hawaiian: 'HA', 'sun country': 'SY',
+}
+
+function airlineToIata(airline: string): string {
+  const a = airline.toLowerCase()
+  for (const [name, code] of Object.entries(AIRLINE_IATA)) {
+    if (a.includes(name)) return code
+  }
+  return ''
+}
+
 function generateDirectAirlineLink(airline: string, origin: string, destination: string, date: string): string {
   const a = airline.toLowerCase()
   const o = origin.toUpperCase()
   const d = destination.toUpperCase()
+  const iata = airlineToIata(airline)
 
-  if (a.includes('delta')) {
-    return `https://www.delta.com/us/en/flight-search/book-a-flight?tripType=ONE_WAY&fromAirport=${o}&toAirport=${d}&departureDate=${date}&paxCount=1&cabinType=MAIN_CABIN`
-  }
-  if (a.includes('united')) {
-    return `https://www.united.com/en/us/flifo/summary?type=booking&from=${o}&to=${d}&departure=${date}&cabin=ECONOMY&pax=1:0:0`
-  }
-  if (a.includes('american')) {
-    return `https://www.aa.com/booking/find-flights?locale=en_US&origin=${o}&destination=${d}&departDate=${date}&adults=1&cabinType=coach&tripType=OneWay`
-  }
+  // JetBlue — direct deep link works (shows search results page)
   if (a.includes('jetblue')) {
-    return `https://www.jetblue.com/booking/flights?from=${o}&to=${d}&depart=${date}&is498498MultiCity=false&noOfRoute=1&lang=en&adults=1&children=0&infants=0`
+    return `https://www.jetblue.com/booking/flights?from=${o}&to=${d}&depart=${date}&noOfRoute=1&lang=en&adults=1&children=0&infants=0`
   }
-  if (a.includes('alaska')) {
-    return `https://www.alaskaair.com/shopping/flights?prior=AS&A0=${o}&A1=${d}&D0=${date}&prior=none&ADT=1`
-  }
+  // Southwest — direct deep link works
   if (a.includes('southwest')) {
-    return `https://www.southwest.com/air/booking/select.html?originationAirportCode=${o}&destinationAirportCode=${d}&departureDate=${date}&tripType=oneway&adultPassengersCount=1`
+    return `https://www.southwest.com/air/booking/select.html?adultPassengersCount=1&departureDate=${date}&destinationAirportCode=${d}&originationAirportCode=${o}&tripType=oneway`
   }
 
-  return `https://www.google.com/travel/flights?q=${airline}+flights+${o}+to+${d}+${date}`
+  // All other airlines: use Kayak filtered to that airline (reliable deep links)
+  if (iata) {
+    return `https://www.kayak.com/flights/${o}-${d}/${date}?sort=price_a&fs=airlines=${iata};stops=~0`
+  }
+
+  // Unknown airline: Kayak unfiltered
+  return `https://www.kayak.com/flights/${o}-${d}/${date}?sort=price_a&fs=stops=~0`
 }
 
 function matchesPreferredAirline(flight: FlightSearchResult, preferredRaw: string | undefined): boolean {
@@ -204,7 +216,7 @@ export async function searchFlights(params: {
         currency: 'USD',
         departureTime: `${date}T17:30:00`,
         arrivalTime: `${date}T20:45:00`,
-        bookingLink: `https://www.delta.com/us/en/flight-search/book-a-flight?tripType=ONE_WAY&fromAirport=${o}&toAirport=${d}&departureDate=${date}&paxCount=1&cabinType=MAIN_CABIN`,
+        bookingLink: generateDirectAirlineLink('Delta', o, d, date),
         segmentCount: 1,
       },
       {
@@ -215,7 +227,7 @@ export async function searchFlights(params: {
         currency: 'USD',
         departureTime: `${date}T19:15:00`,
         arrivalTime: `${date}T22:30:00`,
-        bookingLink: `https://www.united.com/en/us/flifo/summary?type=booking&from=${o}&to=${d}&departure=${date}&cabin=ECONOMY&pax=1:0:0`,
+        bookingLink: generateDirectAirlineLink('United', o, d, date),
         segmentCount: 1,
       },
       {
@@ -226,7 +238,7 @@ export async function searchFlights(params: {
         currency: 'USD',
         departureTime: `${date}T20:30:00`,
         arrivalTime: `${date}T23:45:00`,
-        bookingLink: `https://www.aa.com/booking/find-flights?locale=en_US&origin=${o}&destination=${d}&departDate=${date}&adults=1&cabinType=coach&tripType=OneWay`,
+        bookingLink: generateDirectAirlineLink('American', o, d, date),
         segmentCount: 1,
       },
     ]
@@ -273,7 +285,7 @@ export async function searchFlights(params: {
         currency: 'USD',
         departureTime: `${date}T19:00:00`,
         arrivalTime: `${date}T22:15:00`,
-        bookingLink: `https://www.delta.com/us/en/flight-search/book-a-flight?tripType=ONE_WAY&fromAirport=${o}&toAirport=${d}&departureDate=${date}&paxCount=1&cabinType=MAIN_CABIN`,
+        bookingLink: generateDirectAirlineLink('Delta', o, d, date),
         segmentCount: 1,
       },
       {
@@ -284,7 +296,7 @@ export async function searchFlights(params: {
         currency: 'USD',
         departureTime: `${date}T20:00:00`,
         arrivalTime: `${date}T23:15:00`,
-        bookingLink: `https://www.united.com/en/us/flifo/summary?type=booking&from=${o}&to=${d}&departure=${date}&cabin=ECONOMY&pax=1:0:0`,
+        bookingLink: generateDirectAirlineLink('United', o, d, date),
         segmentCount: 1,
       },
       {
@@ -295,7 +307,7 @@ export async function searchFlights(params: {
         currency: 'USD',
         departureTime: `${date}T21:00:00`,
         arrivalTime: `${date}T00:15:00`,
-        bookingLink: `https://www.aa.com/booking/find-flights?locale=en_US&origin=${o}&destination=${d}&departDate=${date}&adults=1&cabinType=coach&tripType=OneWay`,
+        bookingLink: generateDirectAirlineLink('American', o, d, date),
         segmentCount: 1,
       },
     ]
