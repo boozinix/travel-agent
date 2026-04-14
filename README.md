@@ -1,44 +1,73 @@
-# Travel Agent — SMS flight assistant
+# Flight-SMS Booking Assistant
 
-Next.js dashboard + Twilio SMS + Prisma + Postgres (Supabase) + Kiwi Tequila flight search.
+A cloud-hosted automated agent that texts you flight options at your configured, preferred schedule. 
 
-## Local dashboard
+## Tech Stack
+- **Next.js (App Router)**: Fast, premium dashboard and serverless API endpoints.
+- **Supabase (PostgreSQL)**: Permanent database storage for conversations and schedules.
+- **Prisma ORM**: Type-safe interactions with your database.
+- **Twilio SMS**: Handles text-messaging fallback/agent responses.
+- **Tequila by Kiwi**: Free flight-search provider for generating options and booking URLs.
 
-```bash
-cp .env.example .env
-# fill DATABASE_URL and optional keys
-npm install
-npm run db:push
-npm run dev
+## Requirements
+
+Before starting, acquire keys for the following free/cheap services:
+1. **[Supabase](https://supabase.com)**: Create a new project and copy the Transaction / Pooler Database URLs.
+2. **[Twilio](https://twilio.com)**: Buy a cheap number ($1/mo) and copy the `ACCOUNT_SID` and `AUTH_TOKEN`.
+3. **[Tequila](https://tequila.kiwi.com)**: Sign up and create a server API key for free flight searches.
+
+## Setup Steps
+
+1. Copy `.env.example` to `.env` and fill out your keys.
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Format Prisma and push the schema to your Supabase instance:
+   ```bash
+   npx prisma db push
+   npx prisma generate
+   ```
+
+3. **Install Dependencies & Start Locally**
+   ```bash
+   npm install
+   npm run dev
+   ```
+
+## Local Development (Testing SMS)
+
+To test Twilio SMS callbacks locally, you must expose your Next.js local server to the Internet using `ngrok` or `localtunnel`.
+1. Run `npx localtunnel --port 3000` (or `ngrok http 3000`).
+2. Go to your Twilio Phone Number configuration on the Twilio Dashboard.
+3. Set the "A MESSAGE COMES IN" Webhook to `https://<YOUR-NGROK-URL>/api/sms` (Method: HTTP POST).
+
+You can test the **cron check** manually by securely calling the endpoint:
+```text
+GET http://localhost:3000/api/cron/hourly-check
+Authorization: Bearer <YOUR_CRON_SECRET>
 ```
 
-Open **http://localhost:3020** (port is fixed in `package.json` and `APP_DEV_PORT`).
+## Deployment on Vercel
 
-## Free / cheap integrations (do these in order)
+Deployment is optimized for Vercel, which will automatically handle Next.js scaling and cron jobs. 
 
-| Integration | Cost | What you do |
-|-------------|------|-------------|
-| **Supabase** | Free Postgres tier | Create project → copy `DATABASE_URL` → `npm run db:push` |
-| **Ignav** | Free 1000 requests | [ignav.com/signup](https://ignav.com/signup) → `IGNAV_API_KEY` |
-| **Twilio** | Trial credit, then ~$0.0079/SMS | Buy SMS-capable number → Messaging webhook `POST` → your `/api/sms` URL |
-| **Vercel** | Free hobby | Connect repo → env vars → deploy; cron in `vercel.json` hits `/api/cron/hourly-check` |
-| **ngrok** (local SMS) | Free tier | `ngrok http 3020` → set `TWILIO_WEBHOOK_URL` to `https://….ngrok-free.app/api/sms` |
+1. Push your repository to GitHub.
+2. Link the repository to your Vercel Project.
+3. In Vercel Settings -> Environment Variables, add **all** the keys from your `.env` file.
+4. **Important for Cron**: For Vercel to trigger the background check smoothly, configure your `vercel.json` in the root:
 
-Optional: set `TWILIO_VALIDATE_SIGNATURE=false` while debugging locally; use real validation in production.
-
-## GitHub
-
-```bash
-git init
-git add .
-git commit -m "Initial travel-agent SMS assistant"
-gh repo create travel-agent --private --source=. --remote=origin --push
+```json
+{
+  "crons": [
+    {
+      "path": "/api/cron/hourly-check",
+      "schedule": "0 * * * *"
+    }
+  ]
+}
 ```
 
-Use your own repo name if you prefer. Without GitHub CLI, create an empty repo on GitHub and `git remote add origin …` then `git push -u origin main`.
+Wait, `vercel.json` is missing in this codebase currently! Please create `vercel.json` with the above contents before deploying.
 
-## API routes
-
-- `POST /api/sms` — Twilio inbound webhook (TwiML reply)
-- `GET /api/cron/hourly-check` — scheduled digest (Bearer `CRON_SECRET` on Vercel)
-- `GET /api/health` — JSON status (no secrets)
+All set! You can visit your deployment URL, setup your preferred schedules in the dashboard, and let the agent search flights for you.

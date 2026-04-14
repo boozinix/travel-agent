@@ -9,13 +9,16 @@ datasource db {
 }
 
 model User {
-  id            String         @id @default(uuid())
-  phoneNumber   String         @unique
-  email         String?        @unique
-  passwordHash  String?
-  schedules     Schedule[]
-  preferences   Preference?
-  conversations Conversation[]
+  id             String         @id @default(uuid())
+  phoneNumber    String         @unique
+  email          String?        @unique
+  passwordHash   String?
+  name           String?
+  telegramChatId String?        @unique
+  schedules      Schedule[]
+  preferences    Preference?
+  conversations  Conversation[]
+  reminderLogs   ReminderLog[]
 }
 
 model Schedule {
@@ -92,4 +95,16 @@ model PendingOffer {
   cabin               String
   rawOffer            String       // JSON blob from Flight API
   bookingLink         String?      // Direct link to book
+}
+
+model ReminderLog {
+  id             String    @id @default(uuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id])
+  routeId        String    // "A" or "B"
+  weekOf         String    // YYYY-MM-DD of the Friday/Sunday being reminded about
+  sentAt         DateTime  @default(now())
+  attempts       Int       @default(1)
+  respondedAt    DateTime?
+  conversationId String?
 }

@@ -101,6 +101,11 @@
   word-break: break-word;
 }
 
+.link {
+  color: #0b7cff;
+  text-decoration: underline;
+}
+
 .inputRow {
   display: flex;
   gap: 0.5rem;

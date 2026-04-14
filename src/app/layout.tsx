@@ -1,30 +1,39 @@
-import type { Metadata } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
-import './globals.css'
-
-const geistSans = Geist({
-  variable: '--font-geist-sans',
-  subsets: ['latin'],
-})
-
-const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
-  subsets: ['latin'],
-})
+import type { Metadata } from "next";
+import "./globals.css";
+import Link from 'next/link';
 
 export const metadata: Metadata = {
-  title: 'Flight SMS Assistant',
-  description: 'SMS flight search and scheduled alerts via Twilio and Kiwi Tequila',
-}
+  title: "Flight SMS Assistant",
+  description: "Automated agent for booking flights via SMS.",
+};
 
 export default function RootLayout({
   children,
 }: Readonly<{
-  children: React.ReactNode
+  children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
-      <body>{children}</body>
+    <html lang="en">
+      <body>
+        <nav style={{ borderBottom: '1px solid var(--card-border)', padding: '16px 24px', background: 'rgba(15, 17, 21, 0.9)' }}>
+          <div className="container flex justify-between items-center" style={{ padding: 0 }}>
+            <div>
+              <Link href="/" style={{ color: 'white', fontWeight: 700, fontSize: '1.25rem' }}>
+                ✈️ Flight-SMS
+              </Link>
+            </div>
+            <div className="flex gap-4">
+              <Link href="/schedules">Schedules</Link>
+              <Link href="/preferences">Preferences</Link>
+              <Link href="/conversations">Conversations</Link>
+              <Link href="/chat" style={{ color: 'var(--brand-primary)', fontWeight: 'bold' }}>AI Agent</Link>
+            </div>
+          </div>
+        </nav>
+        <main>
+          {children}
+        </main>
+      </body>
     </html>
-  )
+  );
 }

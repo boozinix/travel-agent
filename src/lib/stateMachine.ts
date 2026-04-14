@@ -10,15 +10,23 @@ type ConversationContext = {
   chosenDate?: string
 }
 
-export async function processIncomingMessage(phoneNumber: string, messageBody: string): Promise<string> {
+// identifier is either a phone number or a Telegram chat ID (numeric string)
+export async function processIncomingMessage(identifier: string, messageBody: string): Promise<string> {
   let user = await prisma.user.findUnique({
-    where: { phoneNumber },
+    where: { phoneNumber: identifier },
     include: { preferences: true },
   })
   if (!user) {
-    await prisma.user.create({ data: { phoneNumber } })
+    // If identifier looks like a Telegram chat ID (all digits), also set telegramChatId
+    const isTelegramId = /^\d+$/.test(identifier)
+    await prisma.user.create({
+      data: {
+        phoneNumber: identifier,
+        ...(isTelegramId ? { telegramChatId: identifier } : {}),
+      },
+    })
     user = await prisma.user.findUniqueOrThrow({
-      where: { phoneNumber },
+      where: { phoneNumber: identifier },
       include: { preferences: true },
     })
   }
@@ -39,7 +47,7 @@ export async function processIncomingMessage(phoneNumber: string, messageBody: s
       })
     }
     conversation = await prisma.conversation.create({
-      data: { userId: user.id, phoneNumber, state: ConversationState.IDLE },
+      data: { userId: user.id, phoneNumber: identifier, state: ConversationState.IDLE },
     })
     if (isReset) {
       return buildMainMenu()
@@ -146,6 +154,12 @@ export async function processIncomingMessage(phoneNumber: string, messageBody: s
             replyText = `No nonstop flights found for ${chosenLabel}. Try another date or type 'reset'.`
             nextState = ConversationState.ASK_TRIP_DATE
           }
+
+          // Mark any open ReminderLogs as responded since user is engaging
+          await prisma.reminderLog.updateMany({
+            where: { userId: user.id, respondedAt: null },
+            data: { respondedAt: new Date() },
+          })
         } else {
           replyText = `Reply 1, 2, or 3 to pick a date. Or 'reset' to start over.`
         }
@@ -161,6 +175,12 @@ export async function processIncomingMessage(phoneNumber: string, messageBody: s
           if (offer?.bookingLink) {
             replyText = `${offer.airline} ${offer.originAirport}→${offer.destinationAirport} $${offer.priceAmount}\n\nBook here: ${offer.bookingLink}\n\nType A or B to search again, or 'reset'.`
             nextState = ConversationState.DONE
+
+            // Mark any open ReminderLogs as responded
+            await prisma.reminderLog.updateMany({
+              where: { userId: user.id, respondedAt: null },
+              data: { respondedAt: new Date() },
+            })
           } else {
             replyText = 'Invalid option. Pick a number from the list above.'
           }

@@ -23,7 +23,7 @@ function clockToMinutes(hhmm: string): number {
 
 /**
  * Search all origin×destination pairs for a route on a given date.
- * Filter to nonstop + departure window, then score 66% price + 34% time preference.
+ * Filter to nonstop + departure window, then score using route.priceWeight / route.timeWeight.
  */
 export async function searchMVPRoute(
   route: MVPRoute,
@@ -76,12 +76,21 @@ export async function searchMVPRoute(
 
   if (allFlights.length === 0) return []
 
-  const prices = allFlights.map((f) => f.price)
+  // Deduplicate: keep only the first occurrence of each flightNumber+departureTime combo
+  const seen = new Set<string>()
+  const unique = allFlights.filter((f) => {
+    const key = `${f.flightNumber}|${f.departureTime}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+
+  const prices = unique.map((f) => f.price)
   const maxPrice = Math.max(...prices)
   const minPrice = Math.min(...prices)
   const priceRange = maxPrice - minPrice || 1
 
-  const scored: ScoredFlight[] = allFlights.map((f) => {
+  const scored: ScoredFlight[] = unique.map((f) => {
     const priceScore = 1 - (f.price - minPrice) / priceRange
 
     const dep = depMinutes(f.departureTime)!
@@ -97,7 +106,7 @@ export async function searchMVPRoute(
       timeScore = Math.max(0, 1 - distFromPref / (maxDist || 1))
     }
 
-    const score = 0.66 * priceScore + 0.34 * timeScore
+    const score = route.priceWeight * priceScore + route.timeWeight * timeScore
 
     return { ...f, score }
   })

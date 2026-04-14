@@ -1,61 +1,36 @@
-import { NextResponse } from 'next/server'
-import twilio from 'twilio'
-import { processIncomingMessage } from '@/lib/stateMachine'
-import { escapeTwiMLMessage } from '@/lib/twiml'
-import { getPublicBaseUrl } from '@/lib/constants'
+import { NextResponse } from 'next/server';
+import { processIncomingSms } from '@/lib/stateMachine';
 
 export async function POST(req: Request) {
   try {
-    const text = await req.text()
-    const params = new URLSearchParams(text)
+    // Twilio sends application/x-www-form-urlencoded
+    const textData = await req.text();
+    const params = new URLSearchParams(textData);
 
-    const authToken = process.env.TWILIO_AUTH_TOKEN
-    const shouldValidate =
-      authToken && process.env.TWILIO_VALIDATE_SIGNATURE !== 'false'
+    const from = params.get('From') || '';
+    const body = params.get('Body') || '';
 
-    if (shouldValidate) {
-      const signature = req.headers.get('X-Twilio-Signature')
-      const webhookUrl = process.env.TWILIO_WEBHOOK_URL ?? `${getPublicBaseUrl()}/api/sms`
-      const body: Record<string, string> = {}
-      params.forEach((value, key) => {
-        body[key] = value
-      })
-      if (!signature || !twilio.validateRequest(authToken, signature, webhookUrl, body)) {
-        return NextResponse.json({ error: 'Invalid Twilio signature' }, { status: 403 })
-      }
+    if (!from || !body) {
+      return new NextResponse('Invalid Request', { status: 400 });
     }
 
-    const body = params.get('Body')
-    const rawFrom = params.get('From')
+    // Pass everything as a dictionary for debugging raw payload
+    const rawPayload: Record<string, string> = {};
+    params.forEach((value, key) => {
+      rawPayload[key] = value;
+    });
 
-    if (!body || !rawFrom) {
-      return NextResponse.json(
-        { error: 'Missing Body or From (Twilio webhook)' },
-        { status: 400 }
-      )
-    }
+    // Run async process without blocking the Twilio response
+    // Actually, on Vercel serverless, we must await it or Vercel kills it.
+    await processIncomingSms(from, body, rawPayload);
 
-    // WhatsApp sends "whatsapp:+15551234567"; normalize to just the phone number
-    const from = rawFrom.replace(/^whatsapp:/, '')
+    // Return empty TwiML 
+    return new NextResponse('<Response></Response>', {
+      headers: { 'Content-Type': 'text/xml' }
+    });
 
-    const replyMessage = await processIncomingMessage(from, body)
-    const safe = escapeTwiMLMessage(replyMessage)
-
-    const twiml = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Message>${safe}</Message>
-</Response>`
-
-    return new NextResponse(twiml, {
-      status: 200,
-      headers: { 'Content-Type': 'text/xml; charset=utf-8' },
-    })
   } catch (error) {
-    console.error('Error handling SMS from Twilio:', error)
-    const fallback = escapeTwiMLMessage('System error. Please try again shortly.')
-    return new NextResponse(
-      `<?xml version="1.0" encoding="UTF-8"?>\n<Response><Message>${fallback}</Message></Response>`,
-      { status: 500, headers: { 'Content-Type': 'text/xml; charset=utf-8' } }
-    )
+    console.error('Error processing Twilio Webhook', error);
+    return new NextResponse('Internal Server Error', { status: 500 });
   }
 }

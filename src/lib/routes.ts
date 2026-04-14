@@ -14,34 +14,40 @@ export type MVPRoute = {
   dayName: string
   depWindowStart: string // HH:MM (local)
   depWindowEnd: string
-  preferredTimeStart: string // ideal dep window for 34% score boost
+  preferredTimeStart: string // ideal dep window for score boost
   preferredTimeEnd: string
+  priceWeight: number
+  timeWeight: number
 }
 
 export const ROUTE_A: MVPRoute = {
   id: 'A',
   label: 'NYC → SFO',
   origins: ['JFK', 'EWR'],
-  destinations: ['SFO', 'SJC', 'OAK'],
+  destinations: ['SFO'],
   dayOfWeek: 5, // Friday
   dayName: 'Friday',
   depWindowStart: '17:00',
   depWindowEnd: '22:00',
   preferredTimeStart: '19:00',
-  preferredTimeEnd: '20:00',
+  preferredTimeEnd: '21:00',
+  priceWeight: 0.8,
+  timeWeight: 0.2,
 }
 
 export const ROUTE_B: MVPRoute = {
   id: 'B',
   label: 'SFO → NYC',
-  origins: ['SFO', 'SJC', 'OAK'],
+  origins: ['SFO'],
   destinations: ['JFK', 'EWR'],
   dayOfWeek: 0, // Sunday
   dayName: 'Sunday',
-  depWindowStart: '14:00',
-  depWindowEnd: '22:00',
-  preferredTimeStart: '20:00',
+  depWindowStart: '20:00',
+  depWindowEnd: '23:59',
+  preferredTimeStart: '20:30',
   preferredTimeEnd: '21:30',
+  priceWeight: 0.4,
+  timeWeight: 0.6,
 }
 
 export const MVP_ROUTES = [ROUTE_A, ROUTE_B] as const

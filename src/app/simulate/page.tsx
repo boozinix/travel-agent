@@ -5,6 +5,20 @@ import styles from './simulate.module.css'
 
 type Message = { role: 'user' | 'bot'; text: string }
 
+function renderTextWithLinks(text: string) {
+  const parts = text.split(/(https?:\/\/[^\s]+)/g)
+  return parts.map((part, i) => {
+    if (/^https?:\/\/[^\s]+$/.test(part)) {
+      return (
+        <a key={`${part}-${i}`} href={part} target="_blank" rel="noopener noreferrer" className={styles.link}>
+          {part}
+        </a>
+      )
+    }
+    return <span key={`${i}-${part}`}>{part}</span>
+  })
+}
+
 export default function SimulatePage() {
   const [phone, setPhone] = useState('+15551234567')
   const [input, setInput] = useState('')
@@ -16,8 +30,8 @@ export default function SimulatePage() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  async function send() {
-    const text = input.trim()
+  async function sendMsg(override?: string) {
+    const text = (override ?? input).trim()
     if (!text || loading) return
     setInput('')
     setMessages((m) => [...m, { role: 'user', text }])
@@ -61,15 +75,15 @@ export default function SimulatePage() {
           <div className={styles.empty}>
             <p>Send <strong>A</strong> for NYC→SFO (Fridays) or <strong>B</strong> for SFO→NYC (Sundays).</p>
             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', marginTop: '0.75rem' }}>
-              <button className={styles.sendBtn} onClick={() => { setInput('A'); }}>Route A (NYC→SFO)</button>
-              <button className={styles.sendBtn} onClick={() => { setInput('B'); }}>Route B (SFO→NYC)</button>
+              <button className={styles.sendBtn} onClick={() => sendMsg('A')}>Route A (NYC→SFO)</button>
+              <button className={styles.sendBtn} onClick={() => sendMsg('B')}>Route B (SFO→NYC)</button>
             </div>
           </div>
         )}
         {messages.map((m, i) => (
           <div key={i} className={m.role === 'user' ? styles.userBubble : styles.botBubble}>
             <span className={styles.label}>{m.role === 'user' ? 'You' : 'Bot'}</span>
-            <div className={styles.text}>{m.text}</div>
+            <div className={styles.text}>{renderTextWithLinks(m.text)}</div>
           </div>
         ))}
         {loading && <div className={styles.botBubble}><span className={styles.label}>Bot</span><div className={styles.text}>...</div></div>}
@@ -80,7 +94,7 @@ export default function SimulatePage() {
         className={styles.inputRow}
         onSubmit={(e) => {
           e.preventDefault()
-          send()
+          sendMsg()
         }}
       >
         <input

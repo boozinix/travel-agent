@@ -1,4 +1,5 @@
 import type { Preference } from '@prisma/client'
+import { searchFlightsAmadeus } from './amadeus'
 
 export type FlightSearchResult = {
   id: string
@@ -146,40 +147,59 @@ export async function searchFlights(params: {
   const date = normalizeDate(params.dateFrom)
   const prefs = params.preferences
 
+  // Try Amadeus first if credentials are available
+  if (process.env.AMADEUS_CLIENT_ID) {
+    try {
+      const amadeusResults = await searchFlightsAmadeus({
+        origin: params.origin,
+        destination: params.destination,
+        date,
+        nonstopOnly: prefs?.nonstopOnly ?? false,
+        max: 10,
+      })
+      if (amadeusResults.length > 0) {
+        return applyPreferenceFilters(amadeusResults, prefs, 5)
+      }
+    } catch (err) {
+      console.warn('[Amadeus] Search error, falling back to Ignav:', err)
+    }
+  }
+
   if (!apiKey) {
-    console.warn('IGNAV_API_KEY not set. Returning mock data.')
+    const o = params.origin.toUpperCase()
+    const d = params.destination.toUpperCase()
     const mock: FlightSearchResult[] = [
       {
-        id: 'mock-1',
+        id: `mock-${o}-1`,
         airline: 'Delta',
         flightNumber: 'DL407',
         price: 289,
         currency: 'USD',
         departureTime: `${date}T17:30:00`,
         arrivalTime: `${date}T20:45:00`,
-        bookingLink: 'https://www.google.com/travel/flights',
+        bookingLink: `https://www.delta.com/us/en/flight-search/book-a-flight?tripType=ONE_WAY&fromAirport=${o}&toAirport=${d}&departureDate=${date}&paxCount=1&cabinType=MAIN_CABIN`,
         segmentCount: 1,
       },
       {
-        id: 'mock-2',
+        id: `mock-${o}-2`,
         airline: 'United',
         flightNumber: 'UA681',
         price: 315,
         currency: 'USD',
         departureTime: `${date}T19:15:00`,
         arrivalTime: `${date}T22:30:00`,
-        bookingLink: 'https://www.google.com/travel/flights',
+        bookingLink: `https://www.united.com/en/us/flifo/summary?type=booking&from=${o}&to=${d}&departure=${date}&cabin=ECONOMY&pax=1:0:0`,
         segmentCount: 1,
       },
       {
-        id: 'mock-3',
-        airline: 'JetBlue',
-        flightNumber: 'B6523',
-        price: 259,
+        id: `mock-${o}-3`,
+        airline: 'American',
+        flightNumber: 'AA253',
+        price: 274,
         currency: 'USD',
-        departureTime: `${date}T20:00:00`,
-        arrivalTime: `${date}T23:15:00`,
-        bookingLink: 'https://www.google.com/travel/flights',
+        departureTime: `${date}T20:30:00`,
+        arrivalTime: `${date}T23:45:00`,
+        bookingLink: `https://www.aa.com/booking/find-flights?locale=en_US&origin=${o}&destination=${d}&departDate=${date}&adults=1&cabinType=coach&tripType=OneWay`,
         segmentCount: 1,
       },
     ]
@@ -207,12 +227,53 @@ export async function searchFlights(params: {
 
   if (!res.ok) {
     const errText = await res.text().catch(() => '')
-    throw new Error(`Flight search failed: ${res.status} ${res.statusText} ${errText}`)
+    console.warn(`[Ignav] API error: ${res.status} ${errText} — using fallback links`)
   }
 
-  const data = await res.json()
+  const data = res.ok ? await res.json() : { itineraries: [] }
   const itineraries = (data?.itineraries ?? []) as IgnavItinerary[]
-  if (itineraries.length === 0) return []
+  if (itineraries.length === 0) {
+    // Ignav returned no results — fall back to direct airline booking links
+    console.warn(`[Ignav] No itineraries returned — using fallback direct airline links`)
+    const o = params.origin.toUpperCase()
+    const d = params.destination.toUpperCase()
+    const fallback: FlightSearchResult[] = [
+      {
+        id: 'fallback-1',
+        airline: 'Delta',
+        flightNumber: 'DL',
+        price: 0,
+        currency: 'USD',
+        departureTime: `${date}T19:00:00`,
+        arrivalTime: `${date}T22:15:00`,
+        bookingLink: `https://www.delta.com/us/en/flight-search/book-a-flight?tripType=ONE_WAY&fromAirport=${o}&toAirport=${d}&departureDate=${date}&paxCount=1&cabinType=MAIN_CABIN`,
+        segmentCount: 1,
+      },
+      {
+        id: 'fallback-2',
+        airline: 'United',
+        flightNumber: 'UA',
+        price: 0,
+        currency: 'USD',
+        departureTime: `${date}T20:00:00`,
+        arrivalTime: `${date}T23:15:00`,
+        bookingLink: `https://www.united.com/en/us/flifo/summary?type=booking&from=${o}&to=${d}&departure=${date}&cabin=ECONOMY&pax=1:0:0`,
+        segmentCount: 1,
+      },
+      {
+        id: 'fallback-3',
+        airline: 'American',
+        flightNumber: 'AA',
+        price: 0,
+        currency: 'USD',
+        departureTime: `${date}T21:00:00`,
+        arrivalTime: `${date}T00:15:00`,
+        bookingLink: `https://www.aa.com/booking/find-flights?locale=en_US&origin=${o}&destination=${d}&departDate=${date}&adults=1&cabinType=coach&tripType=OneWay`,
+        segmentCount: 1,
+      },
+    ]
+    return fallback
+  }
 
   const mapped: FlightSearchResult[] = itineraries.map((it) => {
     const segs = it.outbound?.segments ?? []

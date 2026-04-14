@@ -1,82 +1,78 @@
-import { prisma } from '@/lib/db'
-import styles from './conversations.module.css'
-import Link from 'next/link'
-
-export const dynamic = 'force-dynamic'
+import { db } from "@/lib/db";
+import { revalidatePath } from "next/cache";
 
 export default async function ConversationsPage() {
-  let conversations: Awaited<ReturnType<typeof loadConversations>> = []
-  let dbError: string | null = null
-
+  let conversations: any[] = [];
   try {
-    conversations = await loadConversations()
-  } catch (err: unknown) {
-    dbError = err instanceof Error ? err.message : 'DB error'
+    conversations = await db.conversation.findMany({
+      orderBy: { updatedAt: 'desc' },
+      take: 10,
+      include: {
+        messages: {
+          orderBy: { createdAt: 'desc' },
+          take: 3
+        }
+      }
+    });
+  } catch (error) {
+    console.warn("DB not ready");
   }
 
   return (
-    <div className={styles.page}>
-      <div className={styles.topBar}>
-        <h1 className={styles.title}>Conversations</h1>
-        <Link href="/" className={styles.backLink}>Dashboard</Link>
+    <div className="container" style={{ maxWidth: '900px' }}>
+      <div className="flex justify-between items-center mb-6">
+        <h2 style={{ fontSize: '2rem' }}>Recent Conversations</h2>
       </div>
 
-      {dbError ? (
-        <p className={styles.error}>Database error: {dbError}</p>
-      ) : conversations.length === 0 ? (
-        <p className={styles.empty}>
-          No conversations yet. Use the <Link href="/simulate">simulator</Link> or text the bot to start one.
-        </p>
-      ) : (
-        <div className={styles.list}>
-          {conversations.map((conv) => (
-            <details key={conv.id} className={styles.convCard}>
-              <summary className={styles.summary}>
-                <span className={styles.phone}>{conv.phoneNumber}</span>
-                <span className={styles.state}>{conv.state}</span>
-                <span className={styles.date}>{new Date(conv.updatedAt).toLocaleString()}</span>
-                <span className={styles.count}>{conv.messages.length} msgs</span>
-              </summary>
-              <div className={styles.thread}>
-                {conv.messages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className={msg.direction === 'INBOUND' ? styles.inbound : styles.outbound}
-                  >
-                    <span className={styles.dir}>{msg.direction === 'INBOUND' ? 'User' : 'Bot'}</span>
-                    <div className={styles.body}>{msg.body}</div>
-                    <span className={styles.ts}>{new Date(msg.createdAt).toLocaleTimeString()}</span>
-                  </div>
-                ))}
-                {conv.pendingOffers.length > 0 && (
-                  <div className={styles.offersSection}>
-                    <span className={styles.dir}>Offers shown</span>
-                    {conv.pendingOffers.map((o) => (
-                      <div key={o.id} className={styles.offer}>
-                        {o.offerIndex}. {o.airline} ${o.priceAmount} — {o.originAirport}→{o.destinationAirport} {o.departureDate}
-                        {o.bookingLink && (
-                          <a href={o.bookingLink} target="_blank" rel="noopener noreferrer" className={styles.link}> Book</a>
-                        )}
+      <div className="grid gap-4">
+        {conversations.length === 0 ? (
+          <div className="glass-panel text-center text-muted">
+            No active conversations yet.
+          </div>
+        ) : (
+          conversations.map(conv => (
+            <div key={conv.id} className="glass-panel text-left">
+              <div className="flex justify-between items-center mb-4 border-bottom">
+                <div>
+                  <h4 style={{ fontSize: '1.2rem', marginBottom: '4px' }}>Phone: {conv.phoneNumber}</h4>
+                  <span style={{ fontSize: '0.85rem', color: 'var(--success)', background: 'rgba(16,185,129,0.1)', padding: '4px 8px', borderRadius: '4px' }}>
+                    State: {conv.state}
+                  </span>
+                </div>
+                <div className="text-muted" style={{ fontSize: '0.85rem' }}>
+                  Last updated: {new Date(conv.updatedAt).toLocaleString()}
+                </div>
+              </div>
+
+              <div style={{ background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: '8px', marginTop: '16px' }}>
+                <h5 style={{ marginBottom: '12px', color: '#94a3b8' }}>Latest Messages</h5>
+                {conv.messages.length === 0 ? (
+                  <p className="text-muted" style={{ fontSize: '0.85rem' }}>No messages logged.</p>
+                ) : (
+                  [...conv.messages].reverse().map((msg: any) => (
+                    <div key={msg.id} style={{ marginBottom: '8px', display: 'flex', justifyContent: msg.direction === 'OUTBOUND' ? 'flex-end' : 'flex-start' }}>
+                      <div style={{ 
+                        maxWidth: '70%', 
+                        padding: '8px 12px', 
+                        borderRadius: '8px',
+                        background: msg.direction === 'OUTBOUND' ? 'var(--primary)' : 'var(--card-bg)',
+                        border: msg.direction === 'INBOUND' ? '1px solid var(--card-border)' : 'none',
+                        color: 'white',
+                        fontSize: '0.9rem'
+                      }}>
+                        <div style={{ fontSize: '0.7rem', opacity: 0.7, marginBottom: '4px' }}>
+                          {msg.direction === 'OUTBOUND' ? 'Agent' : 'User'}
+                        </div>
+                        {msg.body}
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  ))
                 )}
               </div>
-            </details>
-          ))}
-        </div>
-      )}
+            </div>
+          ))
+        )}
+      </div>
     </div>
-  )
-}
-
-async function loadConversations() {
-  return prisma.conversation.findMany({
-    orderBy: { updatedAt: 'desc' },
-    take: 50,
-    include: {
-      messages: { orderBy: { createdAt: 'asc' } },
-      pendingOffers: { orderBy: { offerIndex: 'asc' } },
-    },
-  })
+  );
 }
