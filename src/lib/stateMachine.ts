@@ -85,7 +85,7 @@ export async function processIncomingMessage(identifier: string, messageBody: st
           for (let i = 0; i < labels.length; i++) {
             replyText += `${i + 1}. ${labels[i]}\n`
           }
-          replyText += '\nReply 1, 2, or 3.'
+          replyText += "\nReply 1, 2, or 3. Or 'back' to change route."
           nextState = ConversationState.ASK_TRIP_DATE
         } else {
           replyText = buildMainMenu()
@@ -95,7 +95,6 @@ export async function processIncomingMessage(identifier: string, messageBody: st
       }
 
       case ConversationState.ASK_TRIP_DATE: {
-        const num = parseInt(trimmed, 10)
         const ctx: ConversationContext = JSON.parse(conversation.context || '{}')
         if (!ctx.dates || !ctx.routeId) {
           replyText = "Something went wrong. Type 'reset' to start over."
@@ -103,6 +102,13 @@ export async function processIncomingMessage(identifier: string, messageBody: st
           break
         }
 
+        if (trimmed === 'back') {
+          replyText = buildMainMenu()
+          nextState = ConversationState.IDLE
+          break
+        }
+
+        const num = parseInt(trimmed, 10)
         if (num >= 1 && num <= ctx.dates.length) {
           const chosenDate = ctx.dates[num - 1]
           const chosenLabel = ctx.dateLabels?.[num - 1] ?? chosenDate
@@ -125,7 +131,7 @@ export async function processIncomingMessage(identifier: string, messageBody: st
             for (let i = 0; i < flights.length; i++) {
               replyText += `${i + 1}. ${formatMVPFlightLine(flights[i])}\n`
             }
-            replyText += "\nReply with the number for the booking link, or 'reset' to start over."
+            replyText += "\nReply with a number for the booking link, 'back' to pick a different date, or 'reset'."
 
             await Promise.all(
               flights.map((f, i) =>
@@ -161,12 +167,25 @@ export async function processIncomingMessage(identifier: string, messageBody: st
             data: { respondedAt: new Date() },
           })
         } else {
-          replyText = `Reply 1, 2, or 3 to pick a date. Or 'reset' to start over.`
+          replyText = `Reply 1, 2, or 3 to pick a date. Or 'back' to change route.`
         }
         break
       }
 
       case ConversationState.CONFIRM_OPTION: {
+        if (trimmed === 'back') {
+          const ctx: ConversationContext = JSON.parse(conversation.context || '{}')
+          const route = MVP_ROUTES.find((r) => r.id === ctx.routeId)!
+          replyText = `${route.label} — pick a ${route.dayName}:\n`
+          const labels = ctx.dateLabels ?? ctx.dates ?? []
+          for (let i = 0; i < labels.length; i++) {
+            replyText += `${i + 1}. ${labels[i]}\n`
+          }
+          replyText += "\nReply 1, 2, or 3. Or 'back' to change route."
+          nextState = ConversationState.ASK_TRIP_DATE
+          break
+        }
+
         const num = parseInt(trimmed, 10)
         if (!isNaN(num)) {
           const offer = await prisma.pendingOffer.findFirst({
