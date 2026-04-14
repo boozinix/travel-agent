@@ -159,6 +159,14 @@ type IgnavItinerary = {
   cabin_class?: string
 }
 
+type BookingLink = {
+  provider_name?: string
+  provider_type?: string
+  fare_name?: string
+  price?: { amount?: number; currency?: string }
+  url?: string
+}
+
 async function fetchBookingLink(apiKey: string, ignavId: string): Promise<string> {
   try {
     const res = await fetch('https://ignav.com/api/fares/booking-links', {
@@ -168,8 +176,18 @@ async function fetchBookingLink(apiKey: string, ignavId: string): Promise<string
     })
     if (!res.ok) return ''
     const data = await res.json()
-    const links = data?.booking_links as { url?: string }[] | undefined
-    return links?.[0]?.url ?? ''
+
+    // Ignav returns booking_options[].links[] — prefer airline direct links over OTAs
+    const options = data?.booking_options as { links?: BookingLink[] }[] | undefined
+    if (!options || options.length === 0) return ''
+
+    const allLinks: BookingLink[] = options.flatMap((opt) => opt.links ?? [])
+    const airlineLink = allLinks.find((l) => l.provider_type === 'airline' && l.url)
+    if (airlineLink?.url) return airlineLink.url
+
+    // Fall back to any link with a URL (OTA is still better than nothing)
+    const anyLink = allLinks.find((l) => l.url)
+    return anyLink?.url ?? ''
   } catch {
     return ''
   }
