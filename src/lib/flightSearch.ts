@@ -10,6 +10,7 @@ export type FlightSearchResult = {
   departureTime: string
   arrivalTime: string
   bookingLink: string
+  economyLink?: string
   segmentCount: number
 }
 
@@ -167,29 +168,42 @@ type BookingLink = {
   url?: string
 }
 
-async function fetchBookingLink(apiKey: string, ignavId: string): Promise<string> {
+async function fetchBookingLinks(apiKey: string, ignavId: string): Promise<{ basic: string; economy: string }> {
+  const empty = { basic: '', economy: '' }
   try {
     const res = await fetch('https://ignav.com/api/fares/booking-links', {
       method: 'POST',
       headers: { 'X-Api-Key': apiKey, 'Content-Type': 'application/json' },
       body: JSON.stringify({ ignav_id: ignavId }),
     })
-    if (!res.ok) return ''
+    if (!res.ok) return empty
     const data = await res.json()
 
     // Ignav returns booking_options[].links[] — prefer airline direct links over OTAs
     const options = data?.booking_options as { links?: BookingLink[] }[] | undefined
-    if (!options || options.length === 0) return ''
+    if (!options || options.length === 0) return empty
 
     const allLinks: BookingLink[] = options.flatMap((opt) => opt.links ?? [])
-    const airlineLink = allLinks.find((l) => l.provider_type === 'airline' && l.url)
-    if (airlineLink?.url) return airlineLink.url
+    const airlineLinks = allLinks.filter((l) => l.provider_type === 'airline' && l.url)
 
-    // Fall back to any link with a URL (OTA is still better than nothing)
-    const anyLink = allLinks.find((l) => l.url)
-    return anyLink?.url ?? ''
+    // Find basic economy (cheapest) and standard economy links
+    const basicLink = airlineLinks.find((l) => {
+      const name = (l.fare_name ?? '').toLowerCase()
+      return name.includes('basic') || name.includes('blue basic') || name.includes('saver')
+    })
+    const economyLink = airlineLinks.find((l) => {
+      const name = (l.fare_name ?? '').toLowerCase()
+      return (name.includes('main') || name.includes('classic') || name.includes('standard') || name.includes('core') || name.includes('blue'))
+        && !name.includes('basic')
+    })
+
+    // basic = cheapest airline link, economy = next fare up
+    const basic = basicLink?.url ?? airlineLinks[0]?.url ?? allLinks[0]?.url ?? ''
+    const economy = economyLink?.url ?? airlineLinks[1]?.url ?? ''
+
+    return { basic, economy }
   } catch {
-    return ''
+    return empty
   }
 }
 
@@ -377,12 +391,12 @@ export async function searchFlights(params: {
 
   const withLinks = await Promise.all(
     filtered.map(async (f) => {
-      // 1. Ask Ignav for the official link
+      // 1. Ask Ignav for official links (basic + economy)
       if (f.id) {
-        const link = await fetchBookingLink(apiKey, f.id)
-        if (link) return { ...f, bookingLink: link }
+        const links = await fetchBookingLinks(apiKey, f.id)
+        if (links.basic) return { ...f, bookingLink: links.basic, economyLink: links.economy || undefined }
       }
-      // 2. If Ignav fails to provide a link, generate a direct airline booking link
+      // 2. If Ignav fails, generate a direct airline booking link
       const directLink = generateDirectAirlineLink(f.airline, params.origin, params.destination, date)
       return { ...f, bookingLink: directLink }
     })

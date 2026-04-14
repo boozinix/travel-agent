@@ -94,7 +94,8 @@ model PendingOffer {
   priceAmount         Float
   cabin               String
   rawOffer            String       // JSON blob from Flight API
-  bookingLink         String?      // Direct link to book
+  bookingLink         String?      // Direct link to book (basic economy)
+  economyLink         String?      // Direct link to book (standard economy)
 }
 
 model ReminderLog {

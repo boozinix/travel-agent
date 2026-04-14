@@ -39,6 +39,47 @@ export async function processIncomingMessage(identifier: string, messageBody: st
   const trimmed = messageBody.trim().toLowerCase()
   const isReset = trimmed === 'reset'
 
+  // "back" from DONE → go back to CONFIRM_OPTION (flight list)
+  if (conversation && conversation.state === ConversationState.DONE && trimmed === 'back') {
+    const ctx: ConversationContext = JSON.parse(conversation.context || '{}')
+    const route = MVP_ROUTES.find((r) => r.id === ctx.routeId)
+    if (route && ctx.chosenDate) {
+      await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { state: ConversationState.CONFIRM_OPTION },
+      })
+      // Re-show flight list from pending offers
+      const offers = await prisma.pendingOffer.findMany({
+        where: { conversationId: conversation.id },
+        orderBy: { offerIndex: 'asc' },
+      })
+      if (offers.length > 0) {
+        const chosenLabel = ctx.dateLabels?.[ctx.dates?.indexOf(ctx.chosenDate) ?? 0] ?? ctx.chosenDate
+        let replyText = `${route.label} — ${chosenLabel}:\n\n`
+        for (const o of offers) {
+          replyText += `${o.offerIndex}. ${o.airline} $${o.priceAmount} | ${o.originAirport}→${o.destinationAirport}\n`
+        }
+        replyText += "\nReply with a number for the booking link, 'back' to pick a different date, or 'reset'."
+        await prisma.conversationMessage.create({
+          data: { conversationId: conversation.id, direction: 'INBOUND', body: messageBody },
+        })
+        await prisma.conversationMessage.create({
+          data: { conversationId: conversation.id, direction: 'OUTBOUND', body: replyText },
+        })
+        return replyText
+      }
+    }
+  }
+
+  // "back" from ERROR → go to menu
+  if (conversation && conversation.state === ConversationState.ERROR && trimmed === 'back') {
+    await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { state: ConversationState.IDLE },
+    })
+    return buildMainMenu()
+  }
+
   if (!conversation || conversation.state === ConversationState.DONE || isReset) {
     if (isReset && conversation) {
       await prisma.conversation.update({
@@ -150,7 +191,8 @@ export async function processIncomingMessage(identifier: string, messageBody: st
                     priceAmount: f.price,
                     cabin: 'ECONOMY',
                     rawOffer: JSON.stringify(f),
-                    bookingLink: f.bookingLink || 'https://www.google.com/travel/flights',
+                    bookingLink: f.bookingLink || '',
+                    economyLink: f.economyLink || '',
                   },
                 })
               )
@@ -192,7 +234,11 @@ export async function processIncomingMessage(identifier: string, messageBody: st
             where: { conversationId: conversation.id, offerIndex: num },
           })
           if (offer?.bookingLink) {
-            replyText = `${offer.airline} ${offer.originAirport}→${offer.destinationAirport} $${offer.priceAmount}\n\nBook here: ${offer.bookingLink}\n\nType A or B to search again, or 'reset'.`
+            replyText = `${offer.airline} ${offer.originAirport}→${offer.destinationAirport} $${offer.priceAmount}\n\nBasic Economy: ${offer.bookingLink}`
+            if (offer.economyLink) {
+              replyText += `\n\nStandard Economy: ${offer.economyLink}`
+            }
+            replyText += "\n\nType 'back' to pick a different flight, A or B for a new search, or 'reset'."
             nextState = ConversationState.DONE
 
             // Mark any open ReminderLogs as responded
