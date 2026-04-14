@@ -46,6 +46,33 @@ function clockToMinutes(clock: string): number | null {
   return parseInt(m[1], 10) * 60 + parseInt(m[2], 10)
 }
 
+function generateDirectAirlineLink(airline: string, origin: string, destination: string, date: string): string {
+  const a = airline.toLowerCase()
+  const o = origin.toUpperCase()
+  const d = destination.toUpperCase()
+
+  if (a.includes('delta')) {
+    return `https://www.delta.com/us/en/flight-search/book-a-flight?tripType=ONE_WAY&fromAirport=${o}&toAirport=${d}&departureDate=${date}&paxCount=1&cabinType=MAIN_CABIN`
+  }
+  if (a.includes('united')) {
+    return `https://www.united.com/en/us/flifo/summary?type=booking&from=${o}&to=${d}&departure=${date}&cabin=ECONOMY&pax=1:0:0`
+  }
+  if (a.includes('american')) {
+    return `https://www.aa.com/booking/find-flights?locale=en_US&origin=${o}&destination=${d}&departDate=${date}&adults=1&cabinType=coach&tripType=OneWay`
+  }
+  if (a.includes('jetblue')) {
+    return `https://www.jetblue.com/booking/flights?from=${o}&to=${d}&depart=${date}&is498498MultiCity=false&noOfRoute=1&lang=en&adults=1&children=0&infants=0`
+  }
+  if (a.includes('alaska')) {
+    return `https://www.alaskaair.com/shopping/flights?prior=AS&A0=${o}&A1=${d}&D0=${date}&prior=none&ADT=1`
+  }
+  if (a.includes('southwest')) {
+    return `https://www.southwest.com/air/booking/select.html?originationAirportCode=${o}&destinationAirportCode=${d}&departureDate=${date}&tripType=oneway&adultPassengersCount=1`
+  }
+
+  return `https://www.google.com/travel/flights?q=${airline}+flights+${o}+to+${d}+${date}`
+}
+
 function matchesPreferredAirline(flight: FlightSearchResult, preferredRaw: string | undefined): boolean {
   if (!preferredRaw) return true
   const raw = preferredRaw.trim().toLowerCase()
@@ -213,7 +240,7 @@ export async function searchFlights(params: {
   }
 
   if (prefs?.nonstopOnly) {
-    body.stops = 0
+    body.max_stops = 0
   }
 
   const res = await fetch('https://ignav.com/api/fares/one-way', {
@@ -298,11 +325,14 @@ export async function searchFlights(params: {
 
   const withLinks = await Promise.all(
     filtered.map(async (f) => {
+      // 1. Ask Ignav for the official link
       if (f.id) {
         const link = await fetchBookingLink(apiKey, f.id)
         if (link) return { ...f, bookingLink: link }
       }
-      return { ...f, bookingLink: `https://www.google.com/travel/flights?q=${params.origin}+to+${params.destination}+${date}` }
+      // 2. If Ignav fails to provide a link, generate a direct airline booking link
+      const directLink = generateDirectAirlineLink(f.airline, params.origin, params.destination, date)
+      return { ...f, bookingLink: directLink }
     })
   )
 
