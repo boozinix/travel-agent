@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { processIncomingSms } from '@/lib/stateMachine';
+import { processIncomingMessage } from '@/lib/stateMachine';
 
 export async function POST(req: Request) {
   try {
@@ -22,7 +22,7 @@ export async function POST(req: Request) {
 
     // Run async process without blocking the Twilio response
     // Actually, on Vercel serverless, we must await it or Vercel kills it.
-    await processIncomingSms(from, body, rawPayload);
+    await processIncomingMessage(from, body);
 
     // Return empty TwiML 
     return new NextResponse('<Response></Response>', {
