@@ -116,8 +116,17 @@ export async function searchMVPRoute(
   return scored.slice(0, 5)
 }
 
+function to12h(hhmm: string): string {
+  const [h, m] = hhmm.split(':').map(Number)
+  const period = h >= 12 ? 'pm' : 'am'
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
+  return `${h12}:${String(m).padStart(2, '0')}${period}`
+}
+
 export function formatMVPFlightLine(f: ScoredFlight): string {
-  const dep = f.departureTime.includes('T') ? f.departureTime.split('T')[1].slice(0, 5) : '—'
-  const arr = f.arrivalTime.includes('T') ? f.arrivalTime.split('T')[1].slice(0, 5) : '—'
+  const depRaw = f.departureTime.includes('T') ? f.departureTime.split('T')[1].slice(0, 5) : ''
+  const arrRaw = f.arrivalTime.includes('T') ? f.arrivalTime.split('T')[1].slice(0, 5) : ''
+  const dep = depRaw ? to12h(depRaw) : '—'
+  const arr = arrRaw ? to12h(arrRaw) : '—'
   return `${f.airline} $${f.price} | ${f.originAirport}→${f.destinationAirport} ${dep}–${arr}`
 }

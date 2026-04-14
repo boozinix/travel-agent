@@ -259,6 +259,28 @@ export async function searchFlights(params: {
         bookingLink: generateDirectAirlineLink('American', o, d, date),
         segmentCount: 1,
       },
+      {
+        id: `mock-${o}-4`,
+        airline: 'JetBlue',
+        flightNumber: 'B6411',
+        price: 299,
+        currency: 'USD',
+        departureTime: `${date}T18:00:00`,
+        arrivalTime: `${date}T21:15:00`,
+        bookingLink: generateDirectAirlineLink('JetBlue', o, d, date),
+        segmentCount: 1,
+      },
+      {
+        id: `mock-${o}-5`,
+        airline: 'Alaska',
+        flightNumber: 'AS114',
+        price: 305,
+        currency: 'USD',
+        departureTime: `${date}T21:00:00`,
+        arrivalTime: `${date}T00:15:00`,
+        bookingLink: generateDirectAirlineLink('Alaska', o, d, date),
+        segmentCount: 1,
+      },
     ]
     return applyPreferenceFilters(mock, prefs, 5)
   }
@@ -369,10 +391,18 @@ export async function searchFlights(params: {
   return withLinks
 }
 
+function to12h(hhmm: string): string {
+  const [h, m] = hhmm.split(':').map(Number)
+  const period = h >= 12 ? 'pm' : 'am'
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
+  return `${h12}:${String(m).padStart(2, '0')}${period}`
+}
+
 function formatClockFromIsoLike(s: string): string {
   if (!s) return '—'
   const t = s.includes('T') ? s.split('T')[1] : s
-  return t.slice(0, 5)
+  const hhmm = t.slice(0, 5)
+  return to12h(hhmm)
 }
 
 export function formatFlightLine(f: FlightSearchResult): string {
