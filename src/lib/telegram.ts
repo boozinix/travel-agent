@@ -17,6 +17,24 @@ export async function sendTelegramMessage(chatId: string, text: string, botToken
   }
 }
 
+export async function sendLongTelegramMessage(chatId: string, text: string, botToken?: string): Promise<void> {
+  if (text.length <= 4096) {
+    await sendTelegramMessage(chatId, text, botToken)
+    return
+  }
+  let remaining = text
+  while (remaining.length > 0) {
+    if (remaining.length <= 4096) {
+      await sendTelegramMessage(chatId, remaining, botToken)
+      break
+    }
+    const splitAt = remaining.lastIndexOf('\n', 4096)
+    const cut = splitAt > 0 ? splitAt : 4096
+    await sendTelegramMessage(chatId, remaining.slice(0, cut), botToken)
+    remaining = remaining.slice(cut).trimStart()
+  }
+}
+
 export function parseTelegramUpdate(body: unknown): { chatId: string; text: string; username?: string } | null {
   const update = body as Record<string, unknown>
   const message = (update?.message ?? update?.edited_message) as Record<string, unknown> | undefined

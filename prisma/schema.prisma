@@ -41,6 +41,7 @@ model Preference {
   preferredAirlines   String  // Comma-separated or JSON
   maxPrice            Float?
   nonstopOnly         Boolean @default(false)
+  seatPreference      String? // "window", "aisle", or null
   earliestDepTime     String? // e.g. "06:00"
   latestDepTime       String? // e.g. "20:00"
   otherConfig         String? // JSON blob for extension
@@ -61,6 +62,7 @@ model Conversation {
   user           User                  @relation(fields: [userId], references: [id])
   phoneNumber    String
   state          ConversationState     @default(IDLE)
+  source         String                @default("v1") // "v1", "v2-telegram", "v2-web"
   context        String?               // JSON blob of pending trip requirements
   createdAt      DateTime              @default(now())
   updatedAt      DateTime              @updatedAt
