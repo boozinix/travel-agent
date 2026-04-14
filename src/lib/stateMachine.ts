@@ -43,32 +43,54 @@ export async function processIncomingMessage(identifier: string, messageBody: st
   if (conversation && conversation.state === ConversationState.DONE && trimmed === 'back') {
     const ctx: ConversationContext = JSON.parse(conversation.context || '{}')
     const route = MVP_ROUTES.find((r) => r.id === ctx.routeId)
-    if (route && ctx.chosenDate) {
+
+    // Re-show flight list from pending offers
+    const offers = route ? await prisma.pendingOffer.findMany({
+      where: { conversationId: conversation.id },
+      orderBy: { offerIndex: 'asc' },
+    }) : []
+
+    if (route && offers.length > 0) {
       await prisma.conversation.update({
         where: { id: conversation.id },
         data: { state: ConversationState.CONFIRM_OPTION },
       })
-      // Re-show flight list from pending offers
-      const offers = await prisma.pendingOffer.findMany({
-        where: { conversationId: conversation.id },
-        orderBy: { offerIndex: 'asc' },
-      })
-      if (offers.length > 0) {
-        const chosenLabel = ctx.dateLabels?.[ctx.dates?.indexOf(ctx.chosenDate) ?? 0] ?? ctx.chosenDate
-        let replyText = `${route.label} — ${chosenLabel}:\n\n`
-        for (const o of offers) {
-          replyText += `${o.offerIndex}. ${o.airline} $${o.priceAmount} | ${o.originAirport}→${o.destinationAirport}\n`
-        }
-        replyText += "\nReply with a number for the booking link, 'back' to pick a different date, or 'reset'."
-        await prisma.conversationMessage.create({
-          data: { conversationId: conversation.id, direction: 'INBOUND', body: messageBody },
-        })
-        await prisma.conversationMessage.create({
-          data: { conversationId: conversation.id, direction: 'OUTBOUND', body: replyText },
-        })
-        return replyText
+      const chosenLabel = ctx.dateLabels?.[ctx.dates?.indexOf(ctx.chosenDate ?? '') ?? 0] ?? ctx.chosenDate ?? ''
+      let replyText = `${route.label} — ${chosenLabel}:\n\n`
+      for (const o of offers) {
+        replyText += `${o.offerIndex}. ${o.airline} $${o.priceAmount} | ${o.originAirport}→${o.destinationAirport}\n`
       }
+      replyText += "\nReply with a number for the booking link, 'back' to pick a different date, or 'reset'."
+      await prisma.conversationMessage.create({
+        data: { conversationId: conversation.id, direction: 'INBOUND', body: messageBody },
+      })
+      await prisma.conversationMessage.create({
+        data: { conversationId: conversation.id, direction: 'OUTBOUND', body: replyText },
+      })
+      return replyText
     }
+
+    // No offers or no route context — go back to date selection or menu
+    if (route && ctx.dates) {
+      await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { state: ConversationState.ASK_TRIP_DATE },
+      })
+      let replyText = `${route.label} — pick a ${route.dayName}:\n`
+      const labels = ctx.dateLabels ?? ctx.dates
+      for (let i = 0; i < labels.length; i++) {
+        replyText += `${i + 1}. ${labels[i]}\n`
+      }
+      replyText += "\nReply 1, 2, or 3. Or 'back' to change route."
+      return replyText
+    }
+
+    // Nothing to go back to — show menu
+    await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { state: ConversationState.IDLE },
+    })
+    return buildMainMenu()
   }
 
   // "back" from ERROR → go to menu
@@ -80,7 +102,7 @@ export async function processIncomingMessage(identifier: string, messageBody: st
     return buildMainMenu()
   }
 
-  if (!conversation || conversation.state === ConversationState.DONE || isReset) {
+  if (!conversation || (conversation.state === ConversationState.DONE && trimmed !== 'back') || isReset) {
     if (isReset && conversation) {
       await prisma.conversation.update({
         where: { id: conversation.id },
