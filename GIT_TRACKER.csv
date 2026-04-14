@@ -1,0 +1,2 @@
+save_number,datetime,branch,commit_hash,changes_summary
+17,2026-04-14 00:00,main,TBD,chore: add global Claude rules file, session log, and GIT_TRACKER
