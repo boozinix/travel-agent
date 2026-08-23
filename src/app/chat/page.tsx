@@ -2,6 +2,20 @@
 import { useChat } from 'ai/react';
 import React from 'react';
 
+function linkify(text: string): React.ReactNode[] {
+  const parts = text.split(/(https?:\/\/[^\s<>]+)/g);
+  return parts.map((part, i) =>
+    /^https?:\/\//.test(part) ? (
+      <a key={i} href={part} target="_blank" rel="noopener noreferrer"
+        style={{ color: '#60a5fa', textDecoration: 'underline', wordBreak: 'break-all' }}>
+        {part}
+      </a>
+    ) : (
+      <React.Fragment key={i}>{part}</React.Fragment>
+    )
+  );
+}
+
 export default function ChatPage() {
   const { messages, input, handleInputChange, handleSubmit, error } = useChat();
 
@@ -46,7 +60,7 @@ export default function ChatPage() {
                 borderBottomRightRadius: m.role === 'user' ? '4px' : '16px',
                 borderBottomLeftRadius: m.role === 'user' ? '16px' : '4px',
               }}>
-                {m.content}
+                {linkify(m.content)}
               </div>
             </div>
           ))}

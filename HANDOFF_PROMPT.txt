@@ -1,0 +1,8 @@
+Please absorb the context of this project by thoroughly reviewing `FULL_DETAILED_PLAN.md`, `PROGRESS.md`, and `REMAINING.md` located in the root of this workspace. 
+
+I am building a personalized, independent Travel Agent application (Next.js Application Router with Prisma, Supabase, and Vercel AI SDK integrations). The application serves a dual purpose: 
+1. An automated SMS/WhatsApp flight-tracking system that alerts me when cheap flights meet my precise criteria.
+2. An interactive Web Chatbot powered by DeepSeek that can securely process ad-hoc natural-language flight inquiries.
+
+Our absolute first priority is clearing the immediate Database connection blockage preventing local development from functioning. Next.js is currently throwing `Error querying the database: FATAL: Tenant or user not found`. 
+I have access to my Supabase dashboard. Please instruct me exactly on how to verify if my project is paused, and how to safely execute a database connection test once my `.env` URL is completely validated. Once the database successfully links, we will proceed to final production deployment tasks outlined in `REMAINING.md`.

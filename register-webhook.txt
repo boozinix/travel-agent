@@ -1,0 +1,1 @@
+https://api.telegram.org/bot8772115899:AAEmUkNMqe4JJClI7Z_tyoNHNz9WC0i29EY/setWebhook?url=https://textpedia3.vercel.app/api/telegram
